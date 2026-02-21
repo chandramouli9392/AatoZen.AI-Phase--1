@@ -1,0 +1,2 @@
+file 'C:\Users\chand\OneDrive\Documents\Attachments\Desktop\ai-video-backend\backend\uploads\clip1.mp4'
+file 'C:\Users\chand\OneDrive\Documents\Attachments\Desktop\ai-video-backend\backend\uploads\clip2.mp4'
