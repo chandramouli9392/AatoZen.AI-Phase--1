@@ -43,6 +43,12 @@ AatoZen.AI/
 3. Run the development server: `npm run dev`.
 4. Open [http://localhost:3000](http://localhost:3000).
 
+## Deployment
+
+Are you ready to take AatoZen.AI live? We've prepared a comprehensive, step-by-step guide for deploying the frontend on **Vercel** and the backend on **Render**.
+
+Please see the [Deployment Guide (DEPLOYMENT.md)](DEPLOYMENT.md) for full instructions.
+
 ## Features
 - **AI Video Orchestration**: Gemini-powered FFmpeg command generation.
 - **AI Background Music**: Stability AI-powered BGM synthesis.
