@@ -147,8 +147,8 @@ def default_merge(metadata_list: list) -> str:
         print(f"Robust Merge Error Stderr: {error_msg}")
         raise HTTPException(status_code=500, detail=f"Robust merge failed: {error_msg}")
 
-def merge_audio_video(video_path: str, audio_path: str) -> str:
-    final_path = os.path.join(OUTPUT_FOLDER, "final.mp4")
+def merge_audio_video(video_path: str, audio_path: str, output_path: str = None) -> str:
+    final_path = output_path or os.path.join(OUTPUT_FOLDER, "final.mp4")
     
     # Check for audio in original video to decide filter
     meta = get_video_metadata(video_path)
@@ -180,3 +180,112 @@ def merge_audio_video(video_path: str, audio_path: str) -> str:
         error_msg = e.stderr.decode() if e.stderr else str(e)
         print(f"Merge Error: {error_msg}")
         raise HTTPException(status_code=500, detail=f"Merging failed: {error_msg}")
+
+def apply_advanced_filters(input_path: str, output_path: str, options: dict) -> str:
+    command = ["ffmpeg", "-y"]
+    
+    trim_start = options.get("trim_start")
+    trim_end = options.get("trim_end")
+    if trim_start:
+        command.extend(["-ss", str(trim_start)])
+    if trim_end:
+        command.extend(["-to", str(trim_end)])
+        
+    command.extend(["-i", input_path])
+    
+    v_filters = []
+    a_filters = []
+    
+    speed = float(options.get("speed") or 1.0)
+    if speed != 1.0:
+        v_filters.append(f"setpts={1/speed}*PTS")
+        a_filters.append(f"atempo={speed}")
+        
+    resolution = options.get("resolution", "original")
+    if resolution != "original":
+        if resolution == "480p":
+            v_filters.append("scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2")
+        elif resolution == "720p":
+            v_filters.append("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2")
+        elif resolution == "1080p":
+            v_filters.append("scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2")
+            
+    overlay_text = options.get("overlay_text")
+    if overlay_text:
+        text_pos = options.get("text_position")
+        text_pos = text_pos.lower() if text_pos else "center"
+        if text_pos == "top":
+            y_expr = "50"
+        elif text_pos == "bottom":
+            y_expr = "h-text_h-50"
+        else:
+            y_expr = "(h-text_h)/2"
+            
+        x_expr = "(w-text_w)/2"
+        escaped_text = overlay_text.replace("'", "\\'").replace(":", "\\:")
+        drawtext_filter = f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=48:x={x_expr}:y={y_expr}:borderw=2:bordercolor=black"
+        v_filters.append(drawtext_filter)
+        
+    fade_in = options.get("fade_in", False)
+    fade_out = options.get("fade_out", False)
+    
+    if fade_out or fade_in:
+        meta = get_video_metadata(input_path)
+        duration = float(meta.get("duration", 0))
+        
+        t_start = 0.0
+        if trim_start:
+            parts = str(trim_start).split(':')
+            if len(parts) == 3:
+                t_start = int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
+            else:
+                t_start = float(trim_start)
+                
+        t_end = duration
+        if trim_end:
+            parts = str(trim_end).split(':')
+            if len(parts) == 3:
+                t_end = int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
+            else:
+                t_end = float(trim_end)
+                
+        eff_length = t_end - t_start
+        if eff_length <= 0:
+            eff_length = duration
+            
+        eff_length = eff_length / speed
+        
+        if fade_in:
+            v_filters.append("fade=t=in:st=0:d=1")
+            a_filters.append("afade=t=in:st=0:d=1")
+            
+        if fade_out:
+            out_st = max(0, eff_length - 1)
+            v_filters.append(f"fade=t=out:st={out_st}:d=1")
+            a_filters.append(f"afade=t=out:st={out_st}:d=1")
+            
+    grayscale = options.get("grayscale", False)
+    if grayscale:
+        v_filters.append("hue=s=0")
+        
+    volume = options.get("volume", 100)
+    if volume != 100:
+        meta = get_video_metadata(input_path)
+        if meta.get("has_audio"):
+            a_filters.append(f"volume={volume/100}")
+            
+    if v_filters:
+        command.extend(["-vf", ",".join(v_filters)])
+    if a_filters:
+        command.extend(["-af", ",".join(a_filters)])
+        
+    command.extend(["-c:v", "libx264", "-c:a", "aac", output_path])
+    
+    try:
+        print(f"Applying advanced filters: {' '.join(command)}")
+        subprocess.run(command, check=True, capture_output=True)
+        return output_path
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode() if e.stderr else str(e)
+        print(f"Advanced Filter Error: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Advanced filtering failed: {error_msg}")

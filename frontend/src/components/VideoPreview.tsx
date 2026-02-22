@@ -7,9 +7,10 @@ interface VideoPreviewProps {
     videoUrl: string
     onReset: () => void
     generationTime?: string
+    outputName?: string
 }
 
-export default function VideoPreview({ videoUrl, onReset, generationTime }: VideoPreviewProps) {
+export default function VideoPreview({ videoUrl, onReset, generationTime, outputName = "final" }: VideoPreviewProps) {
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
@@ -43,7 +44,7 @@ export default function VideoPreview({ videoUrl, onReset, generationTime }: Vide
                     <div className="flex flex-col gap-4">
                         <a
                             href={videoUrl}
-                            download="aatozen-final.mp4"
+                            download={`${outputName}.mp4`}
                             className="btn-primary flex items-center justify-center space-x-3 text-lg"
                         >
                             <Download size={24} />

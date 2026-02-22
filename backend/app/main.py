@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 import asyncio
 from .core.config import UPLOAD_FOLDER, OUTPUT_FOLDER
-from .services.video_service import generate_video, merge_audio_video, default_merge
+from .services.video_service import generate_video, merge_audio_video, default_merge, apply_advanced_filters
 from .services.music_service import generate_music
 from .utils.metadata_utils import get_video_metadata, get_video_duration
 
@@ -31,7 +31,18 @@ async def process_video(
     clips: List[UploadFile] = File(...),
     prompt: str = Form(...),
     music_prompt: Optional[str] = Form(None),
-    music_file: Optional[UploadFile] = File(None)
+    music_file: Optional[UploadFile] = File(None),
+    trim_start: Optional[str] = Form(None),
+    trim_end: Optional[str] = Form(None),
+    speed: Optional[float] = Form(1.0),
+    overlay_text: Optional[str] = Form(None),
+    text_position: Optional[str] = Form(None),
+    resolution: Optional[str] = Form("original"),
+    fade_in: bool = Form(False),
+    fade_out: bool = Form(False),
+    volume: Optional[int] = Form(100),
+    output_name: Optional[str] = Form("final"),
+    grayscale: Optional[bool] = Form(False)
 ):
     async def event_generator():
         try:
@@ -76,23 +87,63 @@ async def process_video(
             
             # 4. Finalizing Production
             yield f"data: {json.dumps({'status': 'Finalizing Production...', 'progress': 90})}\n\n"
-            final_video = os.path.join(OUTPUT_FOLDER, "final.mp4")
             
-            if audio_path:
-                # merge_audio_video handles generating outputs/final.mp4
-                merge_audio_video(merged_video, audio_path)
+            import re
+            safe_output_name = re.sub(r'[^a-zA-Z0-9_\-]', '', str(output_name)) if output_name else "final"
+            if not safe_output_name:
+                safe_output_name = "final"
+                
+            final_video = os.path.join(OUTPUT_FOLDER, f"{safe_output_name}.mp4")
+            
+            is_advanced = any([
+                trim_start, trim_end, 
+                speed != 1.0, 
+                overlay_text, 
+                resolution != "original", 
+                fade_in, fade_out,
+                volume != 100,
+                grayscale
+            ])
+            
+            if is_advanced:
+                temp_output = os.path.join(OUTPUT_FOLDER, "temp_merged.mp4")
+                if audio_path:
+                    merge_audio_video(merged_video, audio_path, temp_output)
+                else:
+                    if os.path.exists(merged_video):
+                        shutil.copy2(merged_video, temp_output)
+                
+                options = {
+                    "trim_start": trim_start,
+                    "trim_end": trim_end,
+                    "speed": speed,
+                    "overlay_text": overlay_text,
+                    "text_position": text_position,
+                    "resolution": resolution,
+                    "fade_in": fade_in,
+                    "fade_out": fade_out,
+                    "volume": volume,
+                    "grayscale": grayscale
+                }
+                apply_advanced_filters(temp_output, final_video, options)
+                if os.path.exists(temp_output):
+                    os.remove(temp_output)
             else:
-                # Point 3: If merged exists but final doesn't, copy it
-                # merged_video should be outputs/merged.mp4 from generate_video or default_merge
-                if os.path.exists(merged_video):
-                    shutil.copy2(merged_video, final_video)
+                if audio_path:
+                    # merge_audio_video handles generating the final video
+                    merge_audio_video(merged_video, audio_path, final_video)
+                else:
+                    # Point 3: If merged exists but final doesn't, copy it
+                    # merged_video should be outputs/merged.mp4 from generate_video or default_merge
+                    if os.path.exists(merged_video):
+                        shutil.copy2(merged_video, final_video)
             
             # Point 4: Safety Check
             if not os.path.exists(final_video):
                 raise Exception("Final video generation failed.")
             
             # Signal completion with consistent filename
-            yield f"data: {json.dumps({'status': 'Complete', 'progress': 100, 'filename': 'final.mp4'})}\n\n"
+            yield f"data: {json.dumps({'status': 'Complete', 'progress': 100, 'filename': f'{safe_output_name}.mp4'})}\n\n"
             
         except Exception as e:
             import traceback

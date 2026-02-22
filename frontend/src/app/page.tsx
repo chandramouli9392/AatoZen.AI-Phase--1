@@ -7,6 +7,7 @@ import BackgroundAnimation from '@/components/BackgroundAnimation'
 import UploadSection from '@/components/UploadSection'
 import MusicSelector, { MusicMode } from '@/components/MusicSelector'
 import VideoPreview from '@/components/VideoPreview'
+import AdvancedControls, { AdvancedOptions } from '@/components/AdvancedControls'
 import { processVideo } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -26,6 +27,9 @@ export default function Home() {
     const [musicPrompt, setMusicPrompt] = useState('')
     const [musicFile, setMusicFile] = useState<File | null>(null)
 
+    // Advanced Controls State
+    const [advancedOptions, setAdvancedOptions] = useState<AdvancedOptions>({})
+
     // Process State
     const [loading, setLoading] = useState(false)
     const [loadingStep, setLoadingStep] = useState(0)
@@ -33,6 +37,24 @@ export default function Home() {
     const [generationTime, setGenerationTime] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [showValidationModal, setShowValidationModal] = useState(false)
+    const [renderProgress, setRenderProgress] = useState(0)
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout
+        if (loading) {
+            setRenderProgress(0)
+            interval = setInterval(() => {
+                setRenderProgress(prev => {
+                    const step = Math.floor(Math.random() * 3) + 1 // 1-3%
+                    const next = prev + step
+                    return next >= 95 ? 95 : next
+                })
+            }, 200)
+        } else {
+            setRenderProgress(0)
+        }
+        return () => clearInterval(interval)
+    }, [loading])
 
     // Loading Step Simulation (Removed)
 
@@ -72,8 +94,12 @@ export default function Home() {
                     }
                 },
                 musicMode === 'ai' ? musicPrompt : undefined,
-                musicMode === 'upload' ? (musicFile || undefined) : undefined
+                musicMode === 'upload' ? (musicFile || undefined) : undefined,
+                advancedOptions
             )
+
+            setRenderProgress(100)
+            await new Promise(resolve => setTimeout(resolve, 500))
 
             const url = window.URL.createObjectURL(blob)
             const duration = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -94,6 +120,7 @@ export default function Home() {
         setMusicMode('none')
         setMusicPrompt('')
         setMusicFile(null)
+        setAdvancedOptions({})
         setVideoUrl(null)
         setGenerationTime(null)
         setError(null)
@@ -176,6 +203,7 @@ export default function Home() {
                             videoUrl={videoUrl}
                             onReset={resetProject}
                             generationTime={generationTime || undefined}
+                            outputName={advancedOptions.output_name || 'final'}
                         />
                     ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -227,6 +255,56 @@ export default function Home() {
                                         />
                                     </section>
 
+                                    {/* New Component: Basic Enhancement Controls */}
+                                    <section className="space-y-4 pt-4 border-t border-white/5">
+                                        <label className="flex items-center space-x-3 text-xs font-bold uppercase tracking-widest text-indigo-400">
+                                            <Wand2 size={14} />
+                                            <span>Basic Enhancement Controls</span>
+                                        </label>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2 glass p-4 rounded-2xl bg-white/5">
+                                                <label className="text-sm font-semibold text-white/80 block">Audio Volume: {advancedOptions.volume ?? 100}%</label>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="200"
+                                                    value={advancedOptions.volume ?? 100}
+                                                    onChange={(e) => setAdvancedOptions({ ...advancedOptions, volume: Number(e.target.value) })}
+                                                    className="w-full accent-indigo-500"
+                                                />
+                                            </div>
+                                            <div className="space-y-2 glass p-4 rounded-2xl bg-white/5">
+                                                <label className="text-sm font-semibold text-white/80 block">Output File Name</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="final_video"
+                                                    value={advancedOptions.output_name ?? ''}
+                                                    onChange={(e) => setAdvancedOptions({ ...advancedOptions, output_name: e.target.value })}
+                                                    className="w-full glass-input text-sm p-2"
+                                                />
+                                                <p className="text-[10px] text-white/30 truncate">Default: final</p>
+                                            </div>
+                                            <div className="space-y-2 glass p-4 rounded-2xl bg-white/5 md:col-span-2 flex items-center justify-between">
+                                                <label className="text-sm font-semibold text-white/80 cursor-pointer select-none" htmlFor="grayscale-checkbox">
+                                                    Apply Grayscale Filter
+                                                </label>
+                                                <input
+                                                    id="grayscale-checkbox"
+                                                    type="checkbox"
+                                                    checked={advancedOptions.grayscale ?? false}
+                                                    onChange={(e) => setAdvancedOptions({ ...advancedOptions, grayscale: e.target.checked })}
+                                                    className="w-5 h-5 accent-indigo-500 rounded cursor-pointer border-white/10 bg-white/5"
+                                                />
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    {/* Component 4: Advanced Controls */}
+                                    <AdvancedControls
+                                        options={advancedOptions}
+                                        setOptions={setAdvancedOptions}
+                                    />
+
                                     {error && (
                                         <motion.div
                                             initial={{ opacity: 0, scale: 0.95 }}
@@ -246,8 +324,12 @@ export default function Home() {
                                         {loading ? (
                                             <div className="flex flex-col items-center">
                                                 <div className="flex items-center space-x-3">
-                                                    <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                                    <span className="font-black text-xl tracking-tight">Processing...</span>
+                                                    {renderProgress !== 100 && (
+                                                        <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                                    )}
+                                                    <span className="font-black text-xl tracking-tight">
+                                                        {renderProgress === 100 ? "Rendering Complete" : `Rendering ${renderProgress}%`}
+                                                    </span>
                                                 </div>
                                             </div>
                                         ) : (
